@@ -1,0 +1,13 @@
+name: intake_hypothetic
+channels:
+  - intake
+  - informaticslab
+  - defaults
+dependencies:
+  - python=3.6
+  - intake
+  - intake_hypothetic
+  - pip:
+    - sphinx
+    - sphinx-rtd-theme
+    - numpydoc
