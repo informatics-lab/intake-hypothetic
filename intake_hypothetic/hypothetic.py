@@ -45,7 +45,7 @@ class HypotheticSource(DataSource):
         self._template_cube_path, _ = self.find_template_cube(None)
         uris = self.metadata_df.uri
         replacement_coords = self.extract_unique_metadata(['uri'])
-        hypotheticube = iris_hypothetic.load_hypotheticube(self._template_cube_path, 'soil_temperature', replacement_coords, uris)
+        hypotheticube = iris_hypothetic.load_hypotheticube(self._template_cube_path, self.metadata['name'], replacement_coords, uris)
         self._ds = hypotheticube
 
     def _get_schema(self):
