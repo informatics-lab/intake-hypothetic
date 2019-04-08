@@ -7,6 +7,8 @@ import iris
 import iris_hypothetic
 import pandas as pd
 import numpy as np
+import tempfile
+import boto3
 
 from intake.source.base import DataSource, Schema
 
@@ -135,7 +137,7 @@ class HypotheticSource(DataSource):
         iter_metadata = [value for _, value in self.metadata.items() if isinstance(value, list)]
         scalar_metadata = {key: value for key, value in self.metadata.items() if not isinstance(value, list)}
 
-        df = pd.DataFrame.from_dict([{**{'forecast_period': fp, 'forecast_reference_time': frt}, **scalar_metadata} for (fp,frt) in itertools.product(*iter_metadata)])
+        df = pd.DataFrame.from_dict([{**{'forecast_period': fp, 'forecast_reference_time': frt}, **scalar_metadata} for (fp, frt) in itertools.product(*iter_metadata)])
 
         df['uri'] = df.apply(lambda row: generator_function({k: str(int(v)) if isinstance(v, np.int64) else str(v) for k, v in row.to_dict().items()}), axis=1)
         return df
@@ -143,10 +145,16 @@ class HypotheticSource(DataSource):
     def find_template_cube(self, var_name):
         for index, row in self.metadata_df.iterrows():
             test_metadata = row.to_dict()
+            s3 = boto3.resource('s3')
+
+            path = test_metadata['uri']
+            assert path.startswith('s3://'), f"File path(s) must be a s3 path starting 's3://'. Got {path}"
+            bucket, key = path[len('s3://'):].split('/', 1)
             try:
-                path = test_metadata['uri']
-                cube = iris.load_cube(path, var_name)
-            except OSError:
+                with tempfile.NamedTemporaryFile() as tmp_file:
+                    tmp_file.write(s3.Bucket(bucket).Object(key).get()['Body'].read())
+                    cube = iris.load_cube(tmp_file.name, var_name)
+            except s3.meta.client.exceptions.NoSuchKey:
                 continue
             else:
                 return path, cube

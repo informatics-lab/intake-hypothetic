@@ -1,0 +1,32 @@
+plugins:
+  source:
+    - module: intake_hypothetic
+sources:
+  soil_temperature:
+    description: UKV Soil
+    driver: hypothetic
+    args:
+      key_generator: 'mo_aws_earth.generate_object_uri'
+      forecast_reference_time:
+        retention: 172800  # 2 days in seconds
+        forecast_reference_time_interval: 10800  # 3 hours in seconds
+        model_start_time: 0  # Hour of day for first model run
+      metadata:
+        name: soil_temperature
+        depth: 0.05 0.225 0.675 2.0
+        depth_units: m
+        forecast_period_units: seconds
+        model: mo-atmospheric-ukv-prd
+        forecast_period:
+          - 0
+          - 3600
+          - 7200
+          - 10800
+          - 14400
+          - 18000
+          - 21600
+          - 25200
+          - 28800
+          - 32400
+          - 36000
+          - 39600
