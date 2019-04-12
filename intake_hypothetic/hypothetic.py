@@ -66,16 +66,16 @@ class HypotheticSource(DataSource):
         self._kwargs = iris_kwargs or kwargs
         self.metadata = metadata
         self.metadata_df = None
-        self._template_cube_path = None
+        self._template_cube_file = None
         self._ds = None
         super(HypotheticSource, self).__init__(metadata=metadata)
 
     def _open_dataset(self):
         self.metadata_df = self.generate_metadata()
-        self._template_cube_path, _ = self.find_template_cube(None)
+        self._template_cube_file, _ = self.find_template_cube(None)
         uris = self.metadata_df.uri
         replacement_coords = self.extract_unique_metadata(['uri'])
-        hypotheticube = iris_hypothetic.load_hypotheticube(self._template_cube_path, 'soil_temperature', replacement_coords, uris)
+        hypotheticube = iris_hypothetic.load_hypotheticube(self._template_cube_file.name, self.metadata['name'], replacement_coords, uris)
         self._ds = hypotheticube
 
     def _get_schema(self):
@@ -182,7 +182,7 @@ class HypotheticSource(DataSource):
             except (IOError, OSError):
                 continue
             else:
-                return path, cube
+                return file, cube
 
         raise ValueError("Failed to find template cube")
 
