@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import importlib
 import itertools
 import warnings
+import urllib
 
 import iris
 import iris_hypothetic
