@@ -5,4 +5,5 @@ pandas
 scipy
 iris
 iris_hypothetic
+boto3
 pytest
