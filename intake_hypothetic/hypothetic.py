@@ -19,6 +19,33 @@ SECONDS_IN_HOUR = 60 * 60
 SECONDS_IN_DAY = 60 * 60 * 24
 
 
+def open_as_local(path):
+    if path.startswith('s3://'):
+        bucket, key = path[len('s3://'):].split('/', 1)
+        s3 = boto3.resource('s3')
+
+        try:
+            object_body = s3.Bucket(bucket).Object(key).get()['Body'].read()
+        except s3.meta.client.exceptions.NoSuchKey:
+            raise IOError(f'No such file {path}')
+
+        file = tempfile.NamedTemporaryFile()
+        file.write(object_body)
+        file.seek(0)
+
+        return file
+
+    if path.startswith('http://') or path.startswith('https://'):
+        object_body = urllib.request.urlopen(path).read()
+        file = tempfile.NamedTemporaryFile()
+        file.write(object_body)
+        file.seek(0)
+
+        return file
+
+    return open(path, 'rb')
+
+
 def _import_from(module, name):
     module = __import__(module, fromlist=[name])
     return getattr(module, name)
@@ -143,21 +170,19 @@ class HypotheticSource(DataSource):
         return df
 
     def find_template_cube(self, var_name):
+
         for index, row in self.metadata_df.iterrows():
             test_metadata = row.to_dict()
-            s3 = boto3.resource('s3')
-
             path = test_metadata['uri']
-            assert path.startswith('s3://'), f"File path(s) must be a s3 path starting 's3://'. Got {path}"
-            bucket, key = path[len('s3://'):].split('/', 1)
+
             try:
-                with tempfile.NamedTemporaryFile() as tmp_file:
-                    tmp_file.write(s3.Bucket(bucket).Object(key).get()['Body'].read())
-                    cube = iris.load_cube(tmp_file.name, var_name)
-            except s3.meta.client.exceptions.NoSuchKey:
+                file = open_as_local(path)
+                cube = iris.load_cube(file.name, var_name)
+            except (IOError, OSError):
                 continue
             else:
                 return path, cube
+
         raise ValueError("Failed to find template cube")
 
     def extract_unique_metadata(self, drop):
