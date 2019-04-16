@@ -22,6 +22,13 @@ def _import_from(module, name):
     return getattr(module, name)
 
 
+def _product_dict(**kwargs):
+    keys = kwargs.keys()
+    vals = kwargs.values()
+    for instance in itertools.product(*vals):
+        yield dict(zip(keys, instance))
+
+
 class HypotheticSource(DataSource):
     """Intake hypothetic"""
     version = __version__
@@ -132,10 +139,10 @@ class HypotheticSource(DataSource):
 
         self.metadata['forecast_reference_time'] = list(self.generate_frts(self.forecast_reference_time))
 
-        iter_metadata = [value for _, value in self.metadata.items() if isinstance(value, list)]
+        iter_metadata = {key: value for key, value in self.metadata.items() if isinstance(value, list)}
         scalar_metadata = {key: value for key, value in self.metadata.items() if not isinstance(value, list)}
 
-        df = pd.DataFrame.from_dict([{**{'forecast_period': fp, 'forecast_reference_time': frt}, **scalar_metadata} for (fp,frt) in itertools.product(*iter_metadata)])
+        df = pd.DataFrame.from_dict([{**product_dict, **scalar_metadata} for product_dict in _product_dict(**iter_metadata)])
 
         df['uri'] = df.apply(lambda row: generator_function({k: str(int(v)) if isinstance(v, np.int64) else str(v) for k, v in row.to_dict().items()}), axis=1)
         return df
