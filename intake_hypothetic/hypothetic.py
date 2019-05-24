@@ -2,11 +2,15 @@ from datetime import datetime, timedelta
 import importlib
 import itertools
 import warnings
+import urllib
 
 import iris
 import iris_hypothetic
 import pandas as pd
 import numpy as np
+import tempfile
+import boto3
+from botocore.handlers import disable_signing
 
 from intake.source.base import DataSource, Schema
 
@@ -36,24 +40,54 @@ class HypotheticSource(DataSource):
     name = 'hypothetic'
     partition_access = True
 
-    def __init__(self, key_generator=None, forecast_reference_time=None, iris_kwargs=None, metadata=None,
+    def __init__(self, key_generator=None, forecast_reference_time=None, iris_kwargs=None, metadata=None, storage_options=None,
                  **kwargs):
         self.key_generator = key_generator
         self.forecast_reference_time = forecast_reference_time
         self._kwargs = iris_kwargs or kwargs
         self.metadata = metadata
         self.metadata_df = None
-        self._template_cube_path = None
+        self._template_cube_file = None
+        self.storage_options = storage_options
         self._ds = None
         super(HypotheticSource, self).__init__(metadata=metadata)
 
     def _open_dataset(self):
         self.metadata_df = self.generate_metadata()
-        self._template_cube_path, _ = self.find_template_cube(None)
+        self._template_cube_file, _ = self.find_template_cube(None)
         uris = self.metadata_df.uri
         replacement_coords = self.extract_unique_metadata(['uri'])
-        hypotheticube = iris_hypothetic.load_hypotheticube(self._template_cube_path, self.metadata['name'], replacement_coords, uris)
+        hypotheticube = iris_hypothetic.load_hypotheticube(self._template_cube_file.name, self.metadata['name'], replacement_coords, uris, storage_options=self.storage_options)
         self._ds = hypotheticube
+
+    def _open_as_local(self, path):
+        if path.startswith('s3://'):
+            bucket, key = path[len('s3://'):].split('/', 1)
+            s3 = boto3.resource('s3')
+
+            if self.storage_options and self.storage_options.get('anon', False):
+                s3.meta.client.meta.events.register('choose-signer.s3.*', disable_signing)
+
+            try:
+                object_body = s3.Bucket(bucket).Object(key).get()['Body'].read()
+            except s3.meta.client.exceptions.NoSuchKey:
+                raise IOError(f'No such file {path}')
+
+            file = tempfile.NamedTemporaryFile()
+            file.write(object_body)
+            file.seek(0)
+
+            return file
+
+        if path.startswith('http://') or path.startswith('https://'):
+            object_body = urllib.request.urlopen(path).read()
+            file = tempfile.NamedTemporaryFile()
+            file.write(object_body)
+            file.seek(0)
+
+            return file
+
+        return open(path, 'rb')
 
     def _get_schema(self):
         """Make schema object, which embeds iris object and some details"""
@@ -89,7 +123,7 @@ class HypotheticSource(DataSource):
                             'tuple')
         if isinstance(i, list):
             i = tuple(i)
-        if isinstance(self._ds, CubeList):
+        if isinstance(self._ds, iris.cube.CubeList):
             arr = self._ds[i[0]].lazy_data()
             i = i[1:]
         else:
@@ -148,15 +182,19 @@ class HypotheticSource(DataSource):
         return df
 
     def find_template_cube(self, var_name):
+
         for index, row in self.metadata_df.iterrows():
             test_metadata = row.to_dict()
+            path = test_metadata['uri']
+
             try:
-                path = test_metadata['uri']
-                cube = iris.load_cube(path, var_name)
-            except OSError:
+                file = self._open_as_local(path)
+                cube = iris.load_cube(file.name, var_name)
+            except (IOError, OSError):
                 continue
             else:
-                return path, cube
+                return file, cube
+
         raise ValueError("Failed to find template cube")
 
     def extract_unique_metadata(self, drop):

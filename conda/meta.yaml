@@ -22,6 +22,7 @@ requirements:
     - scipy
     - iris
     - iris_hypothetic
+    - boto3
 
 test:
   source_files:
